@@ -1,0 +1,810 @@
+# CLASSIFICATION TREE –
+
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(pROC)
+library(mlbench)
+
+
+set.seed(1234)
+pd = sample(2,nrow(clean_bank), replace = TRUE, prob = c(0.6,0.4))
+training = clean_bank[pd==1,]
+validation = clean_bank[pd==2,]
+
+#Full Tree
+tree = rpart(y~.,training, method="class", cp = 0)
+rpart.plot(tree, main = 'Full Tree for Subscription Classification', extra=4)
+tree
+tree$cptable
+plotcp(tree)
+
+p = predict(tree, validation, type = "class")
+tab=table(p,validation$y)
+tab
+
+#Minimum Error Tree
+tree2 = prune(tree, cp = tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"])
+rpart.plot(tree2, main = 'Minimum Error Tree for Subscription Classification', extra=4)
+tree2
+
+p1 = predict(tree2, validation, type = "class")
+tab1=table(p1,validation$y)
+tab1
+
+tree2$cptable
+
+plotcp(tree2)
+
+#Best Pruned Tree
+tree3 = rpart(y~.,training, method="class", cp = 0.0012)
+rpart.plot(tree3, main = 'Best Pruned Tree for Subscription Classification', extra=4)
+
+p2 = predict(tree3, validation, type = "class")
+tab1=table(p2, validation$y)
+tab1
+
+
+# GRADIENT BOOSTING –
+
+install.packages("e1071")
+bank.additional.full <- read.csv("/Users/harshitadidwania/Desktop/bank.csv", header=TRUE, sep=";")
+#Loading the packages
+library(MASS)
+library(ggplot2)
+library(caret)
+library(corrplot)
+
+#Viewing the dataset
+head(bank.additional.full,3)
+str(bank.additional.full)
+
+
+##preprocessing 
+
+
+##separating continuous and categorical variables for checking significance of the variables
+bank_continous = subset(bank.additional.full, select = c(age, duration,campaign,pdays,previous,emp.var.rate,euribor3m, cons.price.idx,cons.conf.idx,  nr.employed) )
+
+bank_categorical=subset(bank.additional.full, select=-c(age, duration,campaign,pdays,previous, emp.var.rate,euribor3m, cons.price.idx,cons.conf.idx, nr.employed))
+
+corr <- cor(bank_continous)
+corrplot(corr = corr,method='square', type = 'full')
+###nr.employed is correlated with euribor3m, emp.var.rate
+##negative correlation btw previous and pdays
+##we will remove euribor3m, emp.var.rate and previous
+##cons.price.idx is correlated with euribor3m, emp.var.rate
+bank_removed_correlations=bank.additional.full[,-c(14,16,17,19)]
+
+#Goodness of fit for categorical variables
+
+chisq.test(bank_categorical$housing,bank_categorical$y)
+##remove housing p value is very less for both loan and housing
+
+chisq.test(bank_categorical$job,bank_categorical$y)
+chisq.test(bank_categorical$loan,bank_categorical$y)
+##loan is not significant
+
+chisq.test(bank_categorical$marital,bank_categorical$y)
+chisq.test(bank_categorical$month,bank_categorical$y)
+chisq.test(bank_categorical$contact,bank_categorical$y)
+chisq.test(bank_categorical$day_of_week,bank_categorical$y)
+chisq.test(bank_categorical$poutcome,bank_categorical$y)
+
+
+bank_removed_correlations=bank_removed_correlations[,-c(6,7)]
+str(bank_removed_correlations)
+
+
+
+#Removing unknown rows
+table(bank_removed_correlations$job)
+unknownjob= which(bank_removed_correlations$job %in% c('unknown')) 
+bank_updated=bank_removed_correlations[-(unknownjob),]
+table(bank_updated$job)
+
+
+table(bank_removed_correlations$marital)
+unknownmarital= which(bank_updated$marital %in% c('unknown')) 
+bank_updated=bank_updated[-(unknownmarital),]
+
+table(bank_removed_correlations$education)
+unknowneducation= which(bank_updated$education %in% c('unknown')) 
+bank_updated=bank_updated[-(unknowneducation),]
+
+table(bank_removed_correlations$default)
+unknowndefault= which(bank_updated$default%in% c('yes')) 
+##the people who have default cannot take bank term deposit
+bank_updated=bank_updated[-(unknowndefault),]
+table(bank_removed_correlations$contact)
+table(bank_removed_correlations$month)
+table(bank_removed_correlations$day_of_week)
+table(bank_removed_correlations$poutcome)
+View(bank_updated)
+########################################################################
+set.seed(1)
+##60% training and 40% test
+training_size <- floor(0.60 * nrow(bank_updated))
+
+train_ind <- sample(seq_len(nrow(bank_updated)), size = training_size)
+training <- bank_updated[train_ind, ]
+testing <- bank_updated[-train_ind, ]
+
+##################################################################
+library(gbm)
+is.factor(bank_updated$y)
+
+bank_updated$y=as.numeric(bank_updated$y)
+bank_updated$y=factor(x=bank_updated$y, levels = c(2,1),labels = c("yes","no"))
+bank_updated$y
+
+
+
+
+
+
+?trainControl
+outcomeName <- 'y'
+predictorsNames <- names(bank_updated)[names(bank_updated) != outcomeName]
+##performing cross validation for higher accuracy
+objControl <- trainControl(method='cv', number=3, returnResamp='none', summaryFunction = twoClassSummary, classProbs = TRUE, )
+objModel <- train(training[,predictorsNames], training[,outcomeName], 
+                  method='gbm', 
+                  trControl=objControl,  
+                  metric = "ROC",
+                  preProc = c("center", "scale"))
+?postResample
+summary(objModel)
+print(objModel)
+predictions <- predict(object=objModel, testing[,predictorsNames], type="raw")
+head(predictions)
+print(postResample(pred=predictions, obs=as.factor(testing[,outcomeName])))
+confusionMatrix(predictions, testing$y, positive='yes')
+
+KNN –
+
+install.packages(&quot;kknn&quot;)
+library(kknn)
+## First, Lets convert factors having character levels to numeric levels
+str(bank_full)
+bank_full_transform&lt;-bank_full
+bank_full_transform$marital=factor(bank_full_transform$marital,levels=c(&quot;single&quot;,&quot;married&quot;,&quot;divorced&quot;
+),labels=c(1,2,3))
+bank_full_transform$job=factor(bank_full_transform$job,levels=c(&quot;admin.&quot;,&quot;blue-
+collar&quot;,&quot;entrepreneur&quot;,&quot;housemaid&quot;,&quot;management&quot;,&quot;retired&quot;,&quot;self-
+employed&quot;,&quot;services&quot;,&quot;student&quot;,&quot;technician&quot;,&quot;unemployed&quot;,&quot;unknown&quot;),labels=c(1,2,3,4,5,6,7,8,9,10,11
+,12))
+bank_full_transform$education=factor(bank_full_transform$education,levels=c(&quot;primary&quot;,&quot;secondary&quot;,
+&quot;tertiary&quot;,&quot;unknown&quot;),labels=c(1,2,3,4))
+bank_full_transform$housingloan=factor(bank_full_transform$housingloan,levels=c(&quot;no&quot;,&quot;yes&quot;),labels=
+c(1,2))
+bank_full_transform$personalloan=factor(bank_full_transform$personalloan,levels=c(&quot;no&quot;,&quot;yes&quot;),labels
+=c(1,2))
+bank_full_transform$subscribed=factor(bank_full_transform$subscribed,levels=c(&quot;no&quot;,&quot;yes&quot;),labels=c(1
+,2))
+bank_full_transform$lastcommtype=factor(bank_full_transform$lastcommtype,levels=c(&quot;cellular&quot;,&quot;tele
+phone&quot;,&quot;unknown&quot;),labels=c(1,2,3))
+bank_full_transform$poutcome=factor(bank_full_transform$poutcome,levels=c(&quot;failure&quot;,&quot;other&quot;,&quot;succ
+ess&quot;,&quot;unknown&quot;),labels=c(1,2,3,4))
+bank_full_transform$lastmonth=factor(bank_full_transform$lastmonth,levels=c(&quot;apr&quot;,&quot;aug&quot;,&quot;dec&quot;,&quot;feb&quot;
+,&quot;jan&quot;,&quot;jul&quot;,&quot;jun&quot;,&quot;mar&quot;,&quot;may&quot;,&quot;nov&quot;,&quot;oct&quot;,&quot;sep&quot;),labels=c(1,2,3,4,5,6,7,8,9,10,11,12))
+str(bank_full_transform)
+## Now convert these numerical factors into numeric
+bank_full_transform$subscribed&lt;-as.numeric(as.character(bank_full_transform$subscribed))
+bank_full_transform$job&lt;-as.numeric(as.character(bank_full_transform$job))
+bank_full_transform$marital&lt;-as.numeric(as.character(bank_full_transform$marital))
+bank_full_transform$education&lt;-as.numeric(as.character(bank_full_transform$education))
+bank_full_transform$personalloan&lt;-as.numeric(as.character(bank_full_transform$personalloan))
+bank_full_transform$housingloan&lt;-as.numeric(as.character(bank_full_transform$housingloan))
+
+bank_full_transform$lastcommtype&lt;-as.numeric(as.character(bank_full_transform$lastcommtype))
+bank_full_transform$lastmonth&lt;-as.numeric(as.character(bank_full_transform$lastmonth))
+bank_full_transform$poutcome&lt;-as.numeric(as.character(bank_full_transform$poutcome))
+bank_full_transform$age&lt;-as.numeric(as.character(bank_full_transform$age))
+bank_full_transform$balance&lt;-as.numeric(as.character(bank_full_transform$balance))
+bank_full_transform$lastday&lt;-as.numeric(as.character(bank_full_transform$lastday))
+bank_full_transform$lastduration&lt;-as.numeric(as.character(bank_full_transform$lastduration))
+bank_full_transform$numcontacts&lt;-as.numeric(as.character(bank_full_transform$numcontacts))
+bank_full_transform$pdays&lt;-as.numeric(as.character(bank_full_transform$pdays))
+bank_full_transform$pcontacts&lt;-as.numeric(as.character(bank_full_transform$pcontacts))
+str(bank_full_transform)
+## Now all the variables are intergers or numeric
+library(caret)
+set.seed(1234567)
+train2&lt;-createDataPartition(bank_full_transform$subscribed,p=0.6,list=FALSE)
+train&lt;-bank_full_transform[train2,]
+test&lt;-bank_full_transform[-train2,]
+write.table(bank_full_transform,&quot;bank1.csv&quot;,sep=&quot;,&quot;)
+str(train)
+str(test)
+## Remember to check for missing values
+which(is.na(train))
+which(is.na(test))
+## Spectral Clustering based on K Nearest Neighbour Graph for train Dataset
+x&lt;-specClust(train[,1:15],centers=NULL,nn=10,method=&quot;symmetric&quot;,gmax=NULL)
+##Other methods like random-walk or NULL can also be used
+summary(x)
+x ## To know the number of clusters
+plot(x)
+
+table[train[,15],x$cluster]
+
+## Train the Dataset (Train) using KKNN method via leave-one-out crossvalidation
+train.kknn&lt;-
+train.kknn(subscribed~.,train,kmax=15,distance=1.5,kernel=c(&quot;rectangular&quot;,&quot;triangular&quot;,&quot;epanechnikov&quot;
+,&quot;biweight&quot;,&quot;triweight&quot;,&quot;cos&quot;,&quot;inv&quot;,&quot;gaussian&quot;,&quot;optimal&quot;),ykernal=NULL,scale=TRUE)
+plot(train.kknn)
+simulation(subscribed~.,train,runs=10,kernel=&quot;triangular&quot;,k=10,train=TRUE)
+train.kknn=kknn(subscribed~.,train=train,test=test,k=10,distance=1,kernel=&quot;gaussian&quot;,ykernel=NULL,sca
+le=TRUE,kknn.dist(learn=train,valid=test,k=10,distance=1))
+## misclassification table
+fit=fitted(train.kknn)
+table(predict(train.kknn,train),train$subscribed)
+pairs(train[,1:15],pch=train$subscribed,col=c(&quot;green&quot;,&quot;red&quot;)[(train$subscribed!=fit)+1])
+
+# LOGISTIC REGRESSION – 
+
+
+rm(list=ls())
+
+setwd('C:\\Users\\Priyanka\\Desktop\\bank\\bank-additional')
+bank1<-read.csv("bank-additional-full.csv",sep=";", stringsAsFactors = FALSE)
+
+#exporting the well-ordered datafile
+write.csv(bank1,"bank1.csv")
+
+dim(bank1)  #41188 obs and 21 variables---20 independent variables (10 char,5 int, 5 num) 
+str(bank1) # there are 
+summary(bank1) 
+
+colnames(bank1)
+#"age"            "job" "marital"        "education" "default" "housing"       
+# "loan"           "contact" "month"          "day_of_week" "duration" "campaign"      
+# "pdays"          "previous" "poutcome"       "emp.var.rate" "cons.price.idx" "cons.conf.idx" 
+# "euribor3m"      "nr.employed" "y"
+
+# numeric variables: age, duration,campaign,pdays,previous,emp.var.rate,
+#euribor3m, cons.price.idx,cons.conf.idx 
+
+#10 character var : job, marital, education, default, housing, loan, contact, month, day_of_week,
+           # poutcome
+# outcome variable = y (0/1)
+
+bank1$y= ifelse(bank1$y=='yes',1,0)
+bank2= as.data.frame(bank1)
+# converting character variables to levels/factor
+bank2$job=as.factor(bank2$job)
+bank2$marital=as.factor(bank2$marital)
+bank2$education=as.factor(bank2$education)
+bank2$default=as.factor(bank2$default)
+bank2$housing=as.factor(bank2$housing)
+bank2$loan=as.factor(bank2$loan)
+bank2$contact=as.factor(bank2$contact)
+bank2$month=as.factor(bank2$month)
+bank2$day_of_week=as.factor(bank2$day_of_week)
+bank2$poutcome=as.factor(bank2$poutcome)
+bank2$y=as.factor(bank2$y)
+
+bank_cont = subset(bank1, select = c(age, duration,campaign,pdays,previous,
+                              emp.var.rate,euribor3m, cons.price.idx,cons.conf.idx, 
+                              nr.employed) )
+
+cor_cat=cor(bank_cont)
+corrplot(cor_cat, method="number", type='lower')
+
+cor_cat_m= bank_cont[,-c(6,7)]  # updated continuous dataframe
+
+#nr.employed highly correlated with emp.var.rate and eurobor3m
+#cons.price.idx highly correlated with emp.var.rate and euribor3m
+
+corrplot(cor(cor_cat), method='number', type='upper',number.cex = 0.7)
+
+bank2=bank2[-c(16,19)] #removed emp.var.rate and euribor3m as highly correlated
+bank2=bank2[-c(6,7)]# removed housing and loan from categorical var
+colnames(bank2)
+
+#checking for any more correlations
+corrplot(cor(cor_cat_m), method='number', type='upper',number.cex = 0.7)
+
+
+#bank3 = subset(bank1, select = c(y,age, duration,campaign,pdays,previous,
+                                #emp.var.rate,euribor3m, cons.price.idx,cons.conf.idx) )
+
+table(is.na(bank1))   # total no missing values
+sapply(bank1,function(x)sum(is.na(x))) # no of missing values by column
+
+table(bank1$y) # has the output as no and yes, hence converted as 0 and 1 respectively
+
+str(bank2$y)  # to check the structure of the outcome variable 
+head(bank2)
+
+##############################VISUALIZATION OF CONTINUOUS VARIABLES############
+
+hist(bank1$age, col="blue", main="Age", xlab = " ")
+boxplot(age~y, data=bank1, main= 'Boxplot age by subscription(y)', col="blue")
+
+hist(bank1$duration, col="pink", main= "Call duration (seconds)", xlab="")
+boxplot(duration~y, data=bank1, main= 'Boxplot duration by subscription(y)', col="pink")
+
+hist(bank1$campaign, col="grey", main= "# of contacts for this campaign", xlab="")
+boxplot(campaign~y, data=bank1, main= 'Boxplot campaign by subscription(y)', col="grey")
+
+hist(bank1$pdays, col="violet", main= "# of days passed (pdays)", xlab="")
+boxplot(pdays~y, data=bank1, main= 'Boxplot pdays by subscription(y)',col="violet")
+
+hist(bank1$previous, col="aquamarine", main= " previous contact", xlab="")
+boxplot(previous~y, data=bank1, main= 'Boxplot of previous by subscription(y)',col="aquamarine")
+
+hist(bank1$cons.conf.idx, col="brown", main= "Monthly cons.conf.inx", xlab="")
+boxplot(cons.conf.idx~y, data=bank1, main= 'Boxplot cons.conf.inx by y', col="brown")
+
+hist(bank1$emp.var.rate, col="green", main= "Employment Variation Rate ", xlab="")
+boxplot(emp.var.rate~y, data=bank1, main= 'Boxplot Emp.var.rate by subscription(y)', col="green")
+
+hist(bank1$euribor3m, col="purple", main= "Euribor 3 month rate", xlab="")
+boxplot(euribor3m~y, data=bank1, main= ' Euribor3m by subscription(y)', col="purple")
+
+hist(bank1$cons.price.idx, col="orange", main= "Monthly Consumer Price Index", xlab="")
+boxplot(duration~y, data=bank1, main= 'Boxplot Mon.Con.Ind by y', col="orange")
+
+hist(bank1$nr.employed, col="forestgreen", main= "# of employees (quarterly)", xlab="")
+boxplot(nr.employed~y, data=bank1, main= 'Boxplot nr.employed by y', col="forestgreen")
+
+####################VISA
+library(ggplot2)
+rm(job1)
+with(bank1, table(job, y))
+with(bank1, table(marital, y))
+with(bank1, table(education, y))
+with(bank1, table(default, y))
+with(bank1, table(housing, y))
+with(bank1, table(loan, y))
+with(bank1, table(contact, y))
+with(bank1, table(month, y))
+with(bank1, table(day_of_week, y))
+with(bank1, table(poutcome, y))
+
+
+#job1=as.data.frame(job1)
+#ggplot(job1, aes(x= job, fill=y)) + geom_bar(color="red", fill="red", width = 0.3)
+# ggplot(bank1, aes(x= marital, fill=y)) + geom_bar(color="blue", fill="blue")
+#ggplot(bank1, aes(x= marital, fill=y)) + geom_bar(color="blue", fill="blue")
+
+
+#######################checking the significant variables#####################################################
+
+#significant categorical variables
+bank_cat = subset(bank2, select = -c(age, duration,campaign,pdays,previous,
+                                     cons.price.idx,cons.conf.idx,nr.employed) )
+
+chisq.test(bank_cat$job, bank2$y)  #p-value < 2.2e-16
+chisq.test(bank_cat$marital, bank2$y)  #p-value < 2.2e-16
+chisq.test(bank_cat$education, bank2$y, simulate.p.value = TRUE) #p value: 0.0004
+chisq.test(bank_cat$default, bank2$y, simulate.p.value = TRUE)  #p-value = 0.0004998
+chisq.test(bank_cat$housing, bank2$y)  #not significant p-value = 0.05829
+chisq.test(bank_cat$loan, bank2$y) #not significant   p-value = 0.5787
+chisq.test(bank_cat$contact, bank2$y) #p-value < 2.2e-16
+chisq.test(bank_cat$month, bank2$y) #p-value < 2.2e-16
+chisq.test(bank_cat$day_of_week, bank2$y)  #p-value = 2.958e-05
+chisq.test(bank_cat$poutcome, bank2$y) #p-value < 2.2e-16
+
+#On the basis of this, we are going to remove housing and loan from the data
+
+#bank2=bank2[-c(6,7)]
+
+colnames(bank2)
+
+table(bank2$job)
+table(bank2$marital)
+table(bank2$education)
+table(bank2$default)
+table(bank2$contact)
+table(bank2$month)
+table(bank2$day_of_week)
+table(bank2$poutcome)
+
+table(bank2$job)
+
+#admin.   blue-collar  entrepreneur    housemaid management       retired 
+#10422          9254 1456          1060 2924 1720 
+#self-employed      services student    technician unemployed     unknown 
+#1421          3969 875          6743 1014 330 
+
+#since unknown category is less, can't infer much hence dropping unknown
+#total obs:41188-330 =40858
+rm(bank3)
+
+bank3=as.data.frame(bank2)
+
+ind_job= which(bank2$job %in% c('unknown')) 
+bank3=bank2[-(ind_job),]
+table(bank3$job)
+
+table(bank2$marital)
+#divorced  married single  unknown 
+#4612    24928 11568       80 
+table(bank3$marital)
+#updated tables on bank3: divorced  married single unknown 
+                         #4599 24694 11494    71
+#since unknown category is less, can't infer much hence dropping unknown 
+#total obs:40858-71 =40787
+ind_marital= which(bank3$marital %in% c('unknown')) 
+bank3=bank3[-(ind_marital),]
+
+table(bank2$education)
+
+#basic.4y            basic.6y basic.9y         high.school 
+#4176                2292 6045                9515 
+#illiterate professional.course   university.degree unknown 
+#18                5243 12168                1731 
+table(bank3$education)
+#updated tables on bank3:
+# basic.4y            basic.6y basic.9y         high.school illiterate 
+#4172                2289 6033                9501 18 
+#professional.course   university.degree      unknown 
+#5238               12139              1727 
+# illiterate will not infer anything hence, removed total obs= 40787-18=40769
+ind_edu= which(bank3$education %in% c('illiterate')) 
+bank3=bank3[-(ind_edu),]
+
+table(bank2$default)
+
+#no unknown     yes 
+#32588    8597 3 
+table(bank3$default)
+#no unknown     yes 
+#32337    8429 3
+#deleting yes rows on default: total obs:40769-3=40766
+
+ind_def= which(bank3$default %in% c('yes')) 
+bank3=bank3[-(ind_def),]
+
+table(bank2$contact)
+
+#cellular telephone 
+#26144     15044 
+
+table(bank2$month)
+
+#apr   aug dec   jul jun mar   may nov oct sep 
+#2632  6178 182  7174 5318 546 13769  4101 718 570 
+
+table(bank2$day_of_week)
+
+#fri  mon thu  tue wed 
+#7827 8514 8623 8090 8134 
+
+table(bank2$poutcome)
+
+#failure nonexistent     success 
+#4252       35563 1373 
+
+#############################################################################################
+##########################CREATING DUMMY VARIABLES#####################################
+summary(bank3)
+bank4=as.data.frame(bank3)
+# retired is the reference total 6 variables.total=23 vars
+bank4$Admin=bank4$Blue_collar=bank4$Technician=bank4$Services=bank4$Management=bank4$Other_jobs=0
+
+bank4$Admin[which(bank4$job=='admin.')]=1
+bank4$Blue_collar[which(bank4$job=='blue-collar')]=1
+bank4$Technician[which(bank4$job=='technician')]=1
+bank4$Services[which(bank4$job=='services')]=1
+bank4$Management[which(bank4$job=='management')]=1
+bank4$Other_jobs[which(bank4$job=='entrepreneur')]=1
+bank4$Other_jobs[which(bank4$job=='housemaid')]=1
+bank4$Other_jobs[which(bank4$job=='self-employed')]=1
+bank4$Other_jobs[which(bank4$job=='student')]=1
+bank4$Other_jobs[which(bank4$job=='unemployed')]=1
+table(bank4$Other_jobs)
+summary(bank3)
+#ind1=which(bank4$job %in% c('entrepreneur','housemaid', 'self-employed','student','unemployed'))
+# bank4$job[ind1] = 'other_jobs'
+## for marital
+table(bank4$marital)
+#divorced  married single  
+#   4597   24676 11493        
+#divorce is reference
+bank4$married=bank4$single=0
+bank4$married[which(bank4$marital=='married')]=1
+bank4$single[which(bank4$marital=='single')]=1
+table(bank4$marital)
+table(bank4$single)
+# contact: no cellphone or no
+table(bank4$contact)
+bank4$cellphn_contact=0
+bank4$cellphn_contact[which(bank4$contact=='cellular')]=1
+table(bank4$cellphn_contact)
+#month
+table(bank4$month)
+bank4$may=bank4$jun=bank4$jul=bank4$aug=bank4$nov=bank4$other_months=0
+bank4$may[which(bank4$month=='may')]=1
+bank4$jun[which(bank4$month=='jun')]=1
+bank4$jul[which(bank4$month=='jul')]=1
+bank4$aug[which(bank4$month=='aug')]=1
+bank4$nov[which(bank4$month=='nov')]=1
+bank4$other_months[which(bank4$month=='dec')]=1
+bank4$other_months[which(bank4$month=='mar')]=1
+bank4$other_months[which(bank4$month=='oct')]=1
+bank4$other_months[which(bank4$month=='sep')]=1
+table(bank4$jun)
+# not including day of week as it doesnt sound to have realistic approach on subscription,
+#duration in minute.
+bank5=as.data.frame(bank4)
+bank5$Duration_min=(bank5$duration/60)
+#pdays: prev_c_contact or not
+ind_999 = which(bank5$pdays==999) 
+bank5$previously_cntctd[ind_999] = 0
+ind_less999 = which(bank5$pday<999) 
+bank5$previously_cntctd[ind_less999] = 1
+# c_c_contact derived from previous variable: contacted previously for this campaign
+bank5$c_c_contact=0
+ind_0 = which(bank5$previous==0)
+bank5$c_c_contact[ind_0]=0
+ind_1=which(bank5$previous>0)
+bank5$c_c_contact[ind_0]=1
+table(bank5$c_c_contact)
+bank6=bank5[,-c(2,3,6,7,8,9,11)]
+#DEFAULT VARIABLE
+bank6$No_default=0
+bank6$No_default[which(bank6$default=='no')]=1 
+bank6=bank6[,-c(3)]
+#previous outcome:poutcome....new variable last_outcome
+bank6$last_outcome=0
+ind_fail=which(bank6$poutcome=='failure')
+bank6$last_outcome[ind_fail]=-1
+ind_success=which(bank6$poutcome=='success')
+bank6$last_outcome[ind_success]=1
+ind_noexist=which(bank6$poutcome=='nonexistent')
+bank6$last_outcome[ind_noexist]=0
+table(bank6$last_outcome)
+bank6=bank6[,-c(5)]
+## EDUCATION VARIABLE
+summary(bank6)
+bank7=as.data.frame(bank6)
+bank7$education=as.character(bank7$education)
+table(bank7$education)
+ind_basic = which(bank7$education %in% c('basic.4y', 'basic.6y', 'basic.9y')) 
+bank7$education[ind_basic] = 'basic_edu'
+bank7$basic_edu=bank7$high_school=bank7$prof_course=bank7$university_degree=0
+bank7$basic_edu[which(bank7$education=='basic_edu')]=1
+bank7$high_school[which(bank7$education=='high.school')]=1
+bank7$university_degree[which(bank7$education=='university.degree')]=1
+bank7$prof_course[which(bank7$education=='professional.course')]=1
+final=bank7[,-c(2)]
+###############################################################
+
+library(caret)
+nearZeroVar(final)
+
+###################LOGISTIC REGRESSION############
+n=nrow(final)
+set.seed(123)
+id.train = sample(1:n, n*0.60) # ncol() gives number of columns
+id.test = setdiff(1:n, id.train)
+dat.train = final[id.train,]
+dat.test = final[id.test,]
+min.model = glm(y~ 1, data = dat.train, family = 'binomial')
+max.model = glm(y ~ ., data = dat.train, family = 'binomial')
+max.formula = formula(max.model)
+obj = step(min.model, direction='forward', scope=max.formula) # it will print out models in each step
+summary(obj) # it will give you the final model
+# NOVEMBER AND SERVICES ARE INSIGNIFICANT VARIABLES:
+#model1 with 40766 observations and 15 independent variables
+model1= subset(final, select=c(y,Duration_min,nr.employed,may,previously_cntctd,cons.price.idx,last_outcome,
+                               Blue_collar,No_default,cellphn_contact,campaign,other_months,jun,aug,jul,previous))
+n=nrow(model1)
+set.seed(123)
+id.train = sample(1:n, n*0.60) # ncol() gives number of columns
+id.test = setdiff(1:n, id.train)
+dat.train = model1[id.train,]
+dat.test = model1[id.test,]
+min.model1 = glm(y~ 1, data = dat.train, family = 'binomial')
+max.model1 = glm(y ~ ., data = dat.train, family = 'binomial')
+max.formula.model1 = formula(max.model1)
+obj_model1 = step(min.model1, direction='forward', scope=max.formula.model1) # it will print out models in each step
+summary(obj_model1) 
+yhat = predict(obj_model1, newdata = dat.test, type='response')
+hist(yhat)
+dichotomize = function(yhat, cutoff=.5) {
+  out = rep(0, length(yhat))
+  out[yhat > cutoff] = 1
+  out
+}
+yhat.class = dichotomize(yhat, .1)
+mean(yhat.class != dat.test$y)
+sen = function(ytrue, yhat) {
+  ind.true1 = which(ytrue == 1)
+  mean( ytrue[ind.true1] == yhat[ind.true1] )
+}
+spe = function(ytrue, yhat) {
+  ind.true0 = which(ytrue == 0)
+  mean( ytrue[ind.true0] == yhat[ind.true0] )
+}
+sen(dat.test$y, yhat.class)
+spe(dat.test$y, yhat.class)
+table(yhat.class)
+#RESULT on model1 with forward selection
+# > sen(dat.test$y, yhat.class)
+#[1] 0.9004306
+#>  spe(dat.test$y, yhat.class)
+#[1] 0.8362516
+#  > table(yhat.class)
+#yhat.class
+#0     1 
+#12268  4039 
+## backward selection
+obj_model1_back = step(max.model1, direction='forward', scope=max.formula.model1) # it will print out models in each step
+summary(obj_model1_back)
+yhat_back = predict(obj_model1_back, newdata = dat.test, type='response')
+hist(yhat_back)
+dichotomize = function(yhat_back, cutoff=.5) {
+  out = rep(0, length(yhat_back))
+  out[yhat > cutoff] = 1
+  out
+}
+yhat.class_back = dichotomize(yhat, .1)
+mean(yhat.class_back != dat.test$y)
+sen = function(ytrue, yhat_back) {
+  ind.true1 = which(ytrue == 1)
+  mean( ytrue[ind.true1] == yhat_back[ind.true1] )
+}
+spe = function(ytrue, yhat_back) {
+  ind.true0 = which(ytrue == 0)
+  mean( ytrue[ind.true0] == yhat_back[ind.true0] )
+}
+sen(dat.test$y, yhat.class_back)   # 0.9004306
+spe(dat.test$y, yhat.class_back)   # 0.8362516
+table(yhat.class_back)
+#yhat.class_back
+#0     1 
+#12268  4039
+## stepwise
+obj_model1_step = step(min.model1, scope=list(lower=min.model1, upper=max.formula.model1), direction='both')
+    summary(obj_model1_step)      
+    yhat_back = predict(obj_model1_back, newdata = dat.test, type='response')
+    hist(yhat_back)
+    
+    
+    
+    yhat_step = predict(obj_model1_step, newdata = dat.test, type='response')
+    hist(yhat_step)
+    
+    
+    dichotomize = function(yhat_step, cutoff=.5) {
+      out = rep(0, length(yhat_step))
+      out[yhat > cutoff] = 1
+      out
+    }
+    
+    yhat.class_step = dichotomize(yhat, .1)
+    
+    mean(yhat.class_step != dat.test$y)
+    
+    sen = function(ytrue, yhat_step) {
+      ind.true1 = which(ytrue == 1)
+      mean( ytrue[ind.true1] == yhat_step[ind.true1] )
+    }
+    
+    spe = function(ytrue, yhat_step) {
+      ind.true0 = which(ytrue == 0)
+      mean( ytrue[ind.true0] == yhat_step[ind.true0] )
+    }
+    
+    sen(dat.test$y, yhat.class_step)   # 0.9004306
+    spe(dat.test$y, yhat.class_step)   # 0.8362516
+    
+    table(yhat.class_step)
+    
+    #yhat.class_step
+    #0  1 
+    #12268  4039 
+
+ACCURACY and CONFUSION MATRIX:
+n=nrow(model1)
+set.seed(123)
+id.train = sample(1:n, n*0.60) # ncol() gives number of columns
+id.test = setdiff(1:n, id.train)
+
+dat.train = model1[id.train,]
+dat.test = model1[id.test,]
+
+min.model1 = glm(y~ 1, data = dat.train, family = 'binomial')
+
+max.model1 = glm(y ~ ., data = dat.train, family = 'binomial')
+max.formula.model1 = formula(max.model1)
+
+obj_model1 = step(min.model1, direction='forward', scope=max.formula.model1) # it will print out models in each step
+summary(obj_model1) 
+
+yhat_step = predict(obj_model1, newdata = dat.test, type='response')
+
+predictions <- predict.glm(obj_model1, newdata=dat.test, type= "response")
+predictions[predictions > 0.5] <- 1
+predictions[predictions <= 0.5] <- 0
+
+1 - length(predictions[predictions == dat.test$y]) / length(predictions)
+
+table(predictions, dat.test$y)
+#predictions     0 1
+ #         0 14086 1109
+#           1 363 749
+
+###### backward
+
+n=nrow(model1)
+set.seed(123)
+id.train = sample(1:n, n*0.60) # ncol() gives number of columns
+id.test = setdiff(1:n, id.train)
+
+dat.train = model1[id.train,]
+dat.test = model1[id.test,]
+
+min.model1 = glm(y~ 1, data = dat.train, family = 'binomial')
+
+max.model1 = glm(y ~ ., data = dat.train, family = 'binomial')
+max.formula.model1 = formula(max.model1)
+
+obj_model1_back = step(max.model1, direction='backward', scope=max.formula.model1) # it will print out models in each step
+summary(obj_model1_back) 
+
+predictions_back <- predict.glm(obj_model1_back, newdata=dat.test, type= "response")
+predictions_back[predictions_back > 0.5] <- 1
+predictions_back[predictions_back <= 0.5] <- 0
+
+1 - length(predictions_back[predictions_back == dat.test$y]) / length(predictions_back)
+
+#0.0926798
+
+table(predictions, dat.test$y)
+#predictions     0 1
+#0 14086  1109
+#1   363 749
+
+### step wise
+
+obj_model1_step = step(min.model1, scope=list(lower=min.model1, upper=max.formula.model1), direction='both')
+summary(obj_model1_step)      
+yhat_back = predict(obj_model1_back, newdata = dat.test, type='response')
+hist(yhat_back)
+
+predictions_step <- predict.glm(obj_model1_back, newdata=dat.test, type= "response")
+predictions_step[predictions_step > 0.5] <- 1
+predictions_step[predictions_step <= 0.5] <- 0
+
+1 - length(predictions_step[predictions_step == dat.test$y]) / length(predictions_back)
+table(predictions, dat.test$y)
+
+##########################################################################
+
+#######################VISUALIZATION OF CONTINUOUS VARIABLES############
+
+hist(bank1$age, col="blue", main="Age", xlab = " ")
+boxplot(age~y, data=bank1, main= 'Boxplot age by subscription(y)', col="blue")
+
+hist(bank1$duration, col="pink", main= "Call duration (seconds)", xlab="")
+boxplot(duration~y, data=bank1, main= 'Boxplot duration by subscription(y)', col="pink")
+
+hist(bank1$campaign, col="grey", main= "# of contacts for this campaign", xlab="")
+boxplot(campaign~y, data=bank1, main= 'Boxplot campaign by subscription(y)', col="grey")
+
+hist(bank1$pdays, col="violet", main= "# of days passed (pdays)", xlab="")
+boxplot(pdays~y, data=bank1, main= 'Boxplot pdays by subscription(y)',col="violet")
+
+hist(bank1$previous, col="aquamarine", main= " previous contact", xlab="")
+boxplot(previous~y, data=bank1, main= 'Boxplot of previous by subscription(y)',col="aquamarine")
+
+hist(bank1$cons.conf.idx, col="brown", main= "Monthly cons.conf.inx", xlab="")
+boxplot(cons.conf.idx~y, data=bank1, main= 'Boxplot cons.conf.inx by y', col="brown")
+
+hist(bank1$emp.var.rate, col="green", main= "Employment Variation Rate ", xlab="")
+boxplot(emp.var.rate~y, data=bank1, main= 'Boxplot Emp.var.rate by subscription(y)', col="green")
+
+hist(bank1$euribor3m, col="purple", main= "Euribor 3 month rate", xlab="")
+boxplot(euribor3m~y, data=bank1, main= ' Euribor3m by subscription(y)', col="purple")
+
+hist(bank1$cons.price.idx, col="orange", main= "Monthly Consumer Price Index", xlab="")
+boxplot(duration~y, data=bank1, main= 'Boxplot Mon.Con.Ind by y', col="orange")
+
+hist(bank1$nr.employed, col="forestgreen", main= "# of employees (quarterly)", xlab="")
+boxplot(nr.employed~y, data=bank1, main= 'Boxplot nr.employed by y', col="forestgreen")
