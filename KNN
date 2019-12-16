@@ -1,0 +1,80 @@
+KNN –
+
+install.packages(&quot;kknn&quot;)
+library(kknn)
+## First, Lets convert factors having character levels to numeric levels
+str(bank_full)
+bank_full_transform&lt;-bank_full
+bank_full_transform$marital=factor(bank_full_transform$marital,levels=c(&quot;single&quot;,&quot;married&quot;,&quot;divorced&quot;
+),labels=c(1,2,3))
+bank_full_transform$job=factor(bank_full_transform$job,levels=c(&quot;admin.&quot;,&quot;blue-
+collar&quot;,&quot;entrepreneur&quot;,&quot;housemaid&quot;,&quot;management&quot;,&quot;retired&quot;,&quot;self-
+employed&quot;,&quot;services&quot;,&quot;student&quot;,&quot;technician&quot;,&quot;unemployed&quot;,&quot;unknown&quot;),labels=c(1,2,3,4,5,6,7,8,9,10,11
+,12))
+bank_full_transform$education=factor(bank_full_transform$education,levels=c(&quot;primary&quot;,&quot;secondary&quot;,
+&quot;tertiary&quot;,&quot;unknown&quot;),labels=c(1,2,3,4))
+bank_full_transform$housingloan=factor(bank_full_transform$housingloan,levels=c(&quot;no&quot;,&quot;yes&quot;),labels=
+c(1,2))
+bank_full_transform$personalloan=factor(bank_full_transform$personalloan,levels=c(&quot;no&quot;,&quot;yes&quot;),labels
+=c(1,2))
+bank_full_transform$subscribed=factor(bank_full_transform$subscribed,levels=c(&quot;no&quot;,&quot;yes&quot;),labels=c(1
+,2))
+bank_full_transform$lastcommtype=factor(bank_full_transform$lastcommtype,levels=c(&quot;cellular&quot;,&quot;tele
+phone&quot;,&quot;unknown&quot;),labels=c(1,2,3))
+bank_full_transform$poutcome=factor(bank_full_transform$poutcome,levels=c(&quot;failure&quot;,&quot;other&quot;,&quot;succ
+ess&quot;,&quot;unknown&quot;),labels=c(1,2,3,4))
+bank_full_transform$lastmonth=factor(bank_full_transform$lastmonth,levels=c(&quot;apr&quot;,&quot;aug&quot;,&quot;dec&quot;,&quot;feb&quot;
+,&quot;jan&quot;,&quot;jul&quot;,&quot;jun&quot;,&quot;mar&quot;,&quot;may&quot;,&quot;nov&quot;,&quot;oct&quot;,&quot;sep&quot;),labels=c(1,2,3,4,5,6,7,8,9,10,11,12))
+str(bank_full_transform)
+## Now convert these numerical factors into numeric
+bank_full_transform$subscribed&lt;-as.numeric(as.character(bank_full_transform$subscribed))
+bank_full_transform$job&lt;-as.numeric(as.character(bank_full_transform$job))
+bank_full_transform$marital&lt;-as.numeric(as.character(bank_full_transform$marital))
+bank_full_transform$education&lt;-as.numeric(as.character(bank_full_transform$education))
+bank_full_transform$personalloan&lt;-as.numeric(as.character(bank_full_transform$personalloan))
+bank_full_transform$housingloan&lt;-as.numeric(as.character(bank_full_transform$housingloan))
+
+bank_full_transform$lastcommtype&lt;-as.numeric(as.character(bank_full_transform$lastcommtype))
+bank_full_transform$lastmonth&lt;-as.numeric(as.character(bank_full_transform$lastmonth))
+bank_full_transform$poutcome&lt;-as.numeric(as.character(bank_full_transform$poutcome))
+bank_full_transform$age&lt;-as.numeric(as.character(bank_full_transform$age))
+bank_full_transform$balance&lt;-as.numeric(as.character(bank_full_transform$balance))
+bank_full_transform$lastday&lt;-as.numeric(as.character(bank_full_transform$lastday))
+bank_full_transform$lastduration&lt;-as.numeric(as.character(bank_full_transform$lastduration))
+bank_full_transform$numcontacts&lt;-as.numeric(as.character(bank_full_transform$numcontacts))
+bank_full_transform$pdays&lt;-as.numeric(as.character(bank_full_transform$pdays))
+bank_full_transform$pcontacts&lt;-as.numeric(as.character(bank_full_transform$pcontacts))
+str(bank_full_transform)
+## Now all the variables are intergers or numeric
+library(caret)
+set.seed(1234567)
+train2&lt;-createDataPartition(bank_full_transform$subscribed,p=0.6,list=FALSE)
+train&lt;-bank_full_transform[train2,]
+test&lt;-bank_full_transform[-train2,]
+write.table(bank_full_transform,&quot;bank1.csv&quot;,sep=&quot;,&quot;)
+str(train)
+str(test)
+## Remember to check for missing values
+which(is.na(train))
+which(is.na(test))
+## Spectral Clustering based on K Nearest Neighbour Graph for train Dataset
+x&lt;-specClust(train[,1:15],centers=NULL,nn=10,method=&quot;symmetric&quot;,gmax=NULL)
+##Other methods like random-walk or NULL can also be used
+summary(x)
+x ## To know the number of clusters
+plot(x)
+
+table[train[,15],x$cluster]
+
+## Train the Dataset (Train) using KKNN method via leave-one-out crossvalidation
+train.kknn&lt;-
+train.kknn(subscribed~.,train,kmax=15,distance=1.5,kernel=c(&quot;rectangular&quot;,&quot;triangular&quot;,&quot;epanechnikov&quot;
+,&quot;biweight&quot;,&quot;triweight&quot;,&quot;cos&quot;,&quot;inv&quot;,&quot;gaussian&quot;,&quot;optimal&quot;),ykernal=NULL,scale=TRUE)
+plot(train.kknn)
+simulation(subscribed~.,train,runs=10,kernel=&quot;triangular&quot;,k=10,train=TRUE)
+train.kknn=kknn(subscribed~.,train=train,test=test,k=10,distance=1,kernel=&quot;gaussian&quot;,ykernel=NULL,sca
+le=TRUE,kknn.dist(learn=train,valid=test,k=10,distance=1))
+## misclassification table
+fit=fitted(train.kknn)
+table(predict(train.kknn,train),train$subscribed)
+pairs(train[,1:15],pch=train$subscribed,col=c(&quot;green&quot;,&quot;red&quot;)[(train$subscribed!=fit)+1])
