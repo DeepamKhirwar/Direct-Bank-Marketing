@@ -1,7 +1,7 @@
 # GRADIENT BOOSTING –
 
 install.packages("e1071")
-bank.additional.full <- read.csv("/Users/harshitadidwania/Desktop/bank.csv", header=TRUE, sep=";")
+bank.additional.full <- read.csv("/Users/deepam/Desktop/bank.csv", header=TRUE, sep=";")
 #Loading the packages
 library(MASS)
 library(ggplot2)
